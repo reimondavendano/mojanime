@@ -16,7 +16,6 @@ export default function AnimeCard({ anime, showDetails = true }: AnimeCardProps)
   const year = anime.startDate?.year;
   const score = anime.averageScore;
 
-  console.log(anime);
 
   return (
     <Link href={`/anime/${anime.id}`} className="group block">

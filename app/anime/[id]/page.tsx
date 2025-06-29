@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useParams } from 'next/navigation';
 import {
@@ -18,37 +18,42 @@ import { RootState } from '@/redux/store';
 export default function AnimeDetailPage() {
   const params = useParams();
   const idParam = params?.id as string;
+  const animeId = parseInt(idParam);
+  const prevAnimeIdRef = useRef<number | null>(null);
+
   const dispatch = useDispatch();
   const { selectedAnime, loading, error } = useSelector((state: RootState) => state.anime);
 
   const PLACEHOLDER_VIDEO_URL = 'https://www.learningcontainer.com/wp-content/uploads/2020/05/sample-mp4-file.mp4';
-  const animeId = parseInt(idParam);
 
-  const fetchDetails = useCallback(async () => {
-  if (isNaN(animeId)) {
-    dispatch(fetchAnimeFailure('Invalid Anime ID provided in the URL.'));
-    return;
-  }
+  useEffect(() => {
+    if (isNaN(animeId)) {
+      dispatch(fetchAnimeFailure('Invalid Anime ID provided in the URL.'));
+      return;
+    }
 
-  dispatch(fetchAnimeStart());
-  try {
-    const data = await getAnimeDetails(animeId);
-    dispatch(fetchSelectedAnimeSuccess(data));
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Failed to fetch anime details';
-    dispatch(fetchAnimeFailure(errorMessage));
-  }
-}, [animeId, dispatch]);
+    // Avoid duplicate fetching
+    if (selectedAnime && selectedAnime.id === animeId) return;
 
-useEffect(() => {
-  if (!selectedAnime || selectedAnime.id !== animeId) {
-    fetchDetails();
-  }
+    dispatch(fetchAnimeStart());
 
-  return () => {
-    dispatch(clearSelectedAnime());
-  };
-}, [animeId, dispatch, selectedAnime, fetchDetails]);
+    getAnimeDetails(animeId)
+      .then((data) => {
+        dispatch(fetchSelectedAnimeSuccess(data));
+        prevAnimeIdRef.current = animeId; // store the current animeId
+      })
+      .catch((err) => {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch anime details';
+        dispatch(fetchAnimeFailure(errorMessage));
+      });
+
+    // Cleanup only if we're leaving this anime ID
+    return () => {
+      if (prevAnimeIdRef.current !== animeId) {
+        dispatch(clearSelectedAnime());
+      }
+    };
+  }, [animeId, dispatch]);
 
   if (loading) {
     return (
