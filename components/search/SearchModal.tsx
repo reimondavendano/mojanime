@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Search, X } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -21,8 +21,8 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const dispatch = useDispatch();
   const { searchResults, searchLoading } = useSelector((state: RootState) => state.anime);
 
-  const handleSearch = async (searchQuery: string) => {
-    if (!searchQuery.trim()) {
+  const handleSearch = useCallback(async (searchQuery: string) => {
+  if (!searchQuery.trim()) {
       dispatch(clearSearchResults());
       return;
     }
@@ -34,7 +34,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
     } catch (error) {
       dispatch(searchAnimeFailure(error instanceof Error ? error.message : 'Search failed'));
     }
-  };
+  }, [dispatch]);
 
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
@@ -42,8 +42,8 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
     }, 300);
 
     return () => clearTimeout(debounceTimer);
-  }, [query]);
-
+  }, [query, handleSearch]); // ✅ fixed missing dep
+  
   const handleClose = () => {
     setQuery('');
     dispatch(clearSearchResults());
@@ -88,7 +88,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
           {!searchLoading && query && searchResults.length === 0 && (
             <div className="text-center py-8">
-              <p className="text-gray-400">No results found for "{query}"</p>
+              <p className="text-gray-400">No results found for &quot;{query}&quot;</p>
             </div>
           )}
 

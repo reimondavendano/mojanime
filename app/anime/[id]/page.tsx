@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useParams } from 'next/navigation';
 import {
@@ -17,60 +17,39 @@ import { RootState } from '@/redux/store';
 
 export default function AnimeDetailPage() {
   const params = useParams();
-  const idParam = params?.id as string; // Get the ID as a string from params
+  const idParam = params?.id as string;
   const dispatch = useDispatch();
   const { selectedAnime, loading, error } = useSelector((state: RootState) => state.anime);
 
   const PLACEHOLDER_VIDEO_URL = 'https://www.learningcontainer.com/wp-content/uploads/2020/05/sample-mp4-file.mp4';
-
-  // Validate and parse the ID
   const animeId = parseInt(idParam);
 
-  // Debugging logs - uncomment these if you need to trace issues
-  useEffect(() => {
+  const fetchDetails = useCallback(async () => {
+  if (isNaN(animeId)) {
+    dispatch(fetchAnimeFailure('Invalid Anime ID provided in the URL.'));
+    return;
+  }
 
-  }, [idParam, animeId, selectedAnime, loading, error]);
+  dispatch(fetchAnimeStart());
+  try {
+    const data = await getAnimeDetails(animeId);
+    dispatch(fetchSelectedAnimeSuccess(data));
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Failed to fetch anime details';
+    dispatch(fetchAnimeFailure(errorMessage));
+  }
+}, [animeId, dispatch]);
 
+useEffect(() => {
+  if (!selectedAnime || selectedAnime.id !== animeId) {
+    fetchDetails();
+  }
 
-  useEffect(() => {
-    // If the ID is not a valid number, don't attempt to fetch
-    if (isNaN(animeId)) {
-      dispatch(fetchAnimeFailure('Invalid Anime ID provided in the URL.'));
-      // console.error('Invalid Anime ID:', idParam); // Debugging
-      return;
-    }
+  return () => {
+    dispatch(clearSelectedAnime());
+  };
+}, [animeId, dispatch, selectedAnime, fetchDetails]);
 
-    const fetchDetails = async () => {
-      dispatch(fetchAnimeStart());
-      try {
-        // console.log(`Attempting to fetch details for ID: ${animeId}`); // Debugging
-        const data = await getAnimeDetails(animeId);
-        // console.log('Fetched data:', data); // Debugging
-        dispatch(fetchSelectedAnimeSuccess(data));
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch anime details';
-        dispatch(fetchAnimeFailure(errorMessage));
-        // console.error('Error fetching anime details:', err); // Debugging
-      }
-    };
-
-    // Fetch details only if selectedAnime is not set or if it's for a different ID
-    // This condition prevents re-fetching if data for the current ID is already loaded.
-    if (!selectedAnime || selectedAnime.id !== animeId) {
-      fetchDetails();
-    }
-
-    // Cleanup function: This runs when the component unmounts, or when animeId changes.
-    // It ensures that when you navigate from one anime to another, the data for the previous
-    // anime is cleared before the new data starts loading.
-    return () => {
-      dispatch(clearSelectedAnime());
-      // console.log('Cleaning up selected anime data on ID change or unmount.'); // Debugging
-    };
-  }, [animeId, dispatch]); // Dependency array: only animeId and dispatch.
-                           // selectedAnime is removed to prevent re-renders caused by state updates within the effect.
-
-  // Display loading state
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -82,7 +61,6 @@ export default function AnimeDetailPage() {
     );
   }
 
-  // Display error state
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -96,7 +74,6 @@ export default function AnimeDetailPage() {
     );
   }
 
-  // Display message if no anime data is available after loading
   if (!selectedAnime) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -105,25 +82,22 @@ export default function AnimeDetailPage() {
     );
   }
 
-  const trailerId = selectedAnime.trailer?.id; // e.g., 'pkKu9hLT-t8'
-
-  const videoUrl = trailerId
-    ? `https://youtu.be/${trailerId}`
-    : PLACEHOLDER_VIDEO_URL;
+  const trailerId = selectedAnime.trailer?.id;
+  const videoUrl = trailerId ? `https://youtu.be/${trailerId}` : PLACEHOLDER_VIDEO_URL;
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Anime Info Section */}
       <AnimeInfo anime={selectedAnime} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-12">
-        {/* Video Player Section */}
         <section>
           <h2 className="text-2xl font-bold text-white mb-6">Watch Episode 1</h2>
           <div className="aspect-video w-full max-w-4xl mx-auto rounded-lg overflow-hidden shadow-xl">
             <PlyrPlayer
               videoUrl={videoUrl}
-              posterUrl={selectedAnime.coverImage?.extraLarge || selectedAnime.coverImage?.large}
+              posterUrl={
+                selectedAnime.coverImage?.extraLarge || selectedAnime.coverImage?.large
+              }
               title={`${selectedAnime.title?.english || selectedAnime.title?.romaji || 'Anime'} Episode 1`}
             />
           </div>
@@ -135,7 +109,6 @@ export default function AnimeDetailPage() {
           </div>
         </section>
 
-        {/* Related Anime Section */}
         <section>
           <RelatedAnime currentAnimeId={selectedAnime.id} />
         </section>
