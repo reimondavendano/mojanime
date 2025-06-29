@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useParams } from 'next/navigation';
 import {
@@ -26,34 +26,60 @@ export default function AnimeDetailPage() {
 
   const PLACEHOLDER_VIDEO_URL = 'https://www.learningcontainer.com/wp-content/uploads/2020/05/sample-mp4-file.mp4';
 
+  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
+  const [animekaiMediaId, setAnimekaiMediaId] = useState<string | null>(null);
+  const [latestEpisode, setLatestEpisode] = useState<number>(1);
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true); // Avoid hydration mismatch
+  }, []);
+
   useEffect(() => {
     if (isNaN(animeId)) {
       dispatch(fetchAnimeFailure('Invalid Anime ID provided in the URL.'));
       return;
     }
 
-    // Avoid duplicate fetching
     if (selectedAnime && selectedAnime.id === animeId) return;
 
     dispatch(fetchAnimeStart());
 
     getAnimeDetails(animeId)
-      .then((data) => {
+      .then((data: any) => {
         dispatch(fetchSelectedAnimeSuccess(data));
-        prevAnimeIdRef.current = animeId; // store the current animeId
+        prevAnimeIdRef.current = animeId;
+
+        const searchTitle = data.title?.english || data.title?.romaji || '';
+
+        fetch(`/api/anime/scrape-animekai?q=${encodeURIComponent(searchTitle)}`)
+          .then(res => res.json())
+          .then(json => {
+            console.log('👀 AnimeKai embed URL:', json.embedUrl);
+            console.log('🆔 AnimeKai Media ID:', json.animekaiId);
+            setEmbedUrl(json.embedUrl || null);
+            setAnimekaiMediaId(json.animekaiId || null);
+
+            // Try to extract episode from the embed URL as a fallback
+            const epMatch = json.embedUrl?.match(/ep=([0-9]+)/);
+            if (epMatch && epMatch[1]) {
+              setLatestEpisode(parseInt(epMatch[1]));
+            } else {
+              setLatestEpisode(1); // Default if not found
+            }
+          })
+          .catch(console.error);
       })
-      .catch((err) => {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch anime details';
-        dispatch(fetchAnimeFailure(errorMessage));
+      .catch(err => {
+        dispatch(fetchAnimeFailure(err.message || 'Failed to fetch anime details.'));
       });
 
-    // Cleanup only if we're leaving this anime ID
     return () => {
       if (prevAnimeIdRef.current !== animeId) {
         dispatch(clearSelectedAnime());
       }
     };
-  }, [animeId, dispatch]);
+  }, [animeId, dispatch, selectedAnime]);
 
   if (loading) {
     return (
@@ -88,7 +114,15 @@ export default function AnimeDetailPage() {
   }
 
   const trailerId = selectedAnime.trailer?.id;
-  const videoUrl = trailerId ? `https://youtu.be/${trailerId}` : PLACEHOLDER_VIDEO_URL;
+  const videoUrl = embedUrl
+    ? embedUrl
+    : trailerId
+    ? `https://youtu.be/${trailerId}`
+    : PLACEHOLDER_VIDEO_URL;
+
+  const animekaiWatchUrl = animekaiMediaId
+    ? `https://animekai.cc/watch/${animekaiMediaId}jp#ep=${latestEpisode}`
+    : null;
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -96,16 +130,24 @@ export default function AnimeDetailPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-12">
         <section>
-          <h2 className="text-2xl font-bold text-white mb-6">Watch Episode 1</h2>
-          <div className="aspect-video w-full max-w-4xl mx-auto rounded-lg overflow-hidden shadow-xl">
-            <PlyrPlayer
-              videoUrl={videoUrl}
-              posterUrl={
-                selectedAnime.coverImage?.extraLarge || selectedAnime.coverImage?.large
-              }
-              title={`${selectedAnime.title?.english || selectedAnime.title?.romaji || 'Anime'} Episode 1`}
-            />
-          </div>
+          <h2 className="text-2xl font-bold text-white mb-6">Watch Episode {latestEpisode}</h2>
+          {hasMounted && (
+            <div className="aspect-video w-full max-w-4xl mx-auto rounded-lg overflow-hidden shadow-xl">
+              {videoUrl.includes('m3u8') || videoUrl.endsWith('.mp4') ? (
+                <PlyrPlayer
+                  videoUrl={videoUrl}
+                  posterUrl={selectedAnime.coverImage?.extraLarge || selectedAnime.coverImage?.large}
+                  title={`${selectedAnime.title?.english || selectedAnime.title?.romaji || 'Anime'} Episode ${latestEpisode}`}
+                />
+              ) : (
+                <iframe
+                  src={videoUrl}
+                  allowFullScreen
+                  className="w-full h-full rounded-xl border-0"
+                />
+              )}
+            </div>
+          )}
           <div className="mt-4 p-4 bg-red-900/20 border border-red-500/30 rounded-lg max-w-4xl mx-auto text-center">
             <p className="text-red-300 text-sm">
               <strong>Note:</strong> This is a placeholder video for demonstration purposes only.
@@ -113,6 +155,23 @@ export default function AnimeDetailPage() {
             </p>
           </div>
         </section>
+
+        {animekaiWatchUrl && (
+          <section>
+            <h2 className="text-2xl font-bold text-white mb-6">Direct AnimeKai Link</h2>
+            <p>
+              Click here to watch on AnimeKai: {' '}
+              <a
+                href={animekaiWatchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:underline"
+              >
+                {selectedAnime.title?.english || selectedAnime.title?.romaji} - Episode {latestEpisode}
+              </a>
+            </p>
+          </section>
+        )}
 
         <section>
           <RelatedAnime currentAnimeId={selectedAnime.id} />
